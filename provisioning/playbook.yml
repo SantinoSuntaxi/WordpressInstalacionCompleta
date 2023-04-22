@@ -1,0 +1,96 @@
+---
+- hosts: all
+  become: true
+  tasks:
+  - name: Make sure we can connect
+    ping:
+# Install required packages for Wordpress
+  - name: Install required packages
+    apt:
+      name:
+      - apache2
+      - mariadb-server
+      - libapache2-mod-php
+      - php-mysql
+      - python-mysqldb
+      state: latest
+      # Create Document Root folder
+
+  - name: Create document root
+    file: 
+      path: /var/www/html/
+      state: directory
+      owner: 'www-data'
+      group: 'www-data'
+      mode: 0755
+      # Download WordPress and uncompress
+  - name: Download and unpack latest WordPress
+    unarchive:
+      src: https://wordpress.org/latest.tar.gz
+      dest: /var/www/html/
+      remote_src: yes
+      extra_opts: [--strip-components=1]
+      # Set permissions for Document_Root
+  - name: Set ownership
+    file:
+      path: /var/www/html/
+      state: directory
+      recurse: yes
+      owner: 'www-data'
+      group: 'www-data'
+  
+  # Configure Apache
+  - name: Configure Apache Configuration
+    replace:
+        dest='/etc/apache2/mods-available/dir.conf'
+        regexp='DirectoryIndex index.html index.cgi index.pl index.php index.xhtml index.htm'
+        replace='DirectoryIndex index.php index.html index.cgi index.pl index.xhtml index.htm' 
+  
+  #Restart Apache server service
+  - name: Restart service apache2
+    service:
+        name: apache2
+        state: restarted
+
+  # Create MariaDB Database
+  - name: Creates database for WordPress
+    mysql_db:
+        name: wp
+        login_user: root
+        login_password: root
+        state: present
+  # Remove MariaDB grants for Wordpress user
+  - name: Remove grants for wordpress user
+    mysql_user:
+      login_user: root
+      login_password: root
+      name: wpuser
+      password: wppassword
+      priv: 'wp.*:ALL'
+      state: absent
+
+# Create MariaDB User
+  - name: Create MariaDB user for WordPress
+    mysql_user:
+      login_user: root
+      login_password: root
+      name: wpuser
+      password: wppassword
+      priv: 'wp.*:ALL'
+      state: present
+
+  - name: Does the database exist?
+    command: mysql -u root wp -e "SELECT ID FROM wp.wp_users LIMIT 1;"
+    register: db_exist
+    ignore_errors: true
+
+  - name: Copy WordPress DB
+    copy: src=files/wp‐database.sql dest=/tmp/wp‐database.sql
+   
+  - name: Import WordPress DB
+    mysql_db: target=/tmp/wp‐database.sql state=import name=wp
+   
+
+  - name: Copy file
+    copy: src=files/wp-config.php dest=/var/www/html/wp-config.php
+    
